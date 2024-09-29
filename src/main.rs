@@ -1,10 +1,11 @@
-use std::sync::Arc;
-
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+mod renderer_backend;
+use renderer_backend::pipeline_builder::PiplelineBuilder;
 
 fn main() {
     // WGPU logs via this crate. We must call init to enable it
@@ -65,8 +66,8 @@ struct State<'a> {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-
     window: &'a Window,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl<'a> State<'a> {
@@ -136,6 +137,14 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
+        let render_pipeline = PiplelineBuilder::new(
+            "shader.wgsl",
+            "vs_main",
+            "fs_main",
+            config.format,
+        )
+        .build(&device);
+
         Self {
             window,
             surface,
@@ -143,6 +152,7 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
+            render_pipeline,
         }
     }
 
@@ -181,9 +191,9 @@ impl<'a> State<'a> {
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: 0.75,
-                    g: 0.5,
-                    b: 0.25,
+                    r: 0.05,
+                    g: 0.05,
+                    b: 0.05,
                     a: 0.0,
                 }),
                 store: wgpu::StoreOp::Store,
@@ -199,7 +209,13 @@ impl<'a> State<'a> {
             timestamp_writes: None,
         };
 
-        command_encoder.begin_render_pass(&render_pass_descriptor);
+        {
+            let mut renderpass =
+                command_encoder.begin_render_pass(&render_pass_descriptor);
+            renderpass.set_pipeline(&self.render_pipeline);
+            renderpass.draw(0..3, 0..1);
+        }
+
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
         drawable.present();
