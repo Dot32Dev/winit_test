@@ -5,6 +5,7 @@ use winit::{
 };
 
 mod renderer_backend;
+use renderer_backend::mesh_builder;
 use renderer_backend::pipeline_builder::PiplelineBuilder;
 
 fn main() {
@@ -68,6 +69,7 @@ struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
+    triangle_mesh: wgpu::Buffer,
 }
 
 impl<'a> State<'a> {
@@ -97,14 +99,14 @@ impl<'a> State<'a> {
                 force_fallback_adapter: false,
             })
             .await
-            .unwrap(); // RAAAAAAGH why is this async? Who would ever want to be doing something else while the adaptor is requested?
+            .unwrap();
 
-        // Creating the device and queue! The device is really how we access the GPU, and the queue is how instructions are sent i guess. Now i forget what the device actually does
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     required_features: wgpu::Features::empty(),
-                    // If we want to build to WebGL, this must be more restrictive
+                    // If we want to build to WebGL, this must be more
+                    // restrictive
                     required_limits: wgpu::Limits::default(),
                     label: None,
                 },
@@ -113,7 +115,8 @@ impl<'a> State<'a> {
             .await
             .unwrap();
 
-        // Loop through all the possible surface formats and find one that supports sRGB
+        // Loop through all the possible surface formats and find one that
+        // supports sRGB
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
             .formats
@@ -137,13 +140,18 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
-        let render_pipeline = PiplelineBuilder::new(
+        let triangle_mesh = mesh_builder::make_triangle(&device);
+
+        let mut render_pipeline_builder = PiplelineBuilder::new(
             "shader.wgsl",
             "vs_main",
             "fs_main",
             config.format,
-        )
-        .build(&device);
+        );
+        render_pipeline_builder
+            .add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+
+        let render_pipeline = render_pipeline_builder.build(&device);
 
         Self {
             window,
@@ -153,6 +161,7 @@ impl<'a> State<'a> {
             config,
             size,
             render_pipeline,
+            triangle_mesh,
         }
     }
 
@@ -213,6 +222,7 @@ impl<'a> State<'a> {
             let mut renderpass =
                 command_encoder.begin_render_pass(&render_pass_descriptor);
             renderpass.set_pipeline(&self.render_pipeline);
+            renderpass.set_vertex_buffer(0, self.triangle_mesh.slice(..));
             renderpass.draw(0..3, 0..1);
         }
 

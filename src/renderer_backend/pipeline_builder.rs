@@ -8,6 +8,7 @@ pub struct PiplelineBuilder {
     vertex_entry: String,
     fragment_entry: String,
     pixel_format: wgpu::TextureFormat,
+    vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
 }
 
 impl PiplelineBuilder {
@@ -22,7 +23,15 @@ impl PiplelineBuilder {
             vertex_entry: vertex_entry.to_owned(),
             fragment_entry: fragment_entry.to_owned(),
             pixel_format,
+            vertex_buffer_layouts: Vec::new(),
         }
+    }
+
+    pub fn add_vertex_buffer_layout(
+        &mut self,
+        layout: wgpu::VertexBufferLayout<'static>,
+    ) {
+        self.vertex_buffer_layouts.push(layout);
     }
 
     pub fn build(&mut self, device: &wgpu::Device) -> wgpu::RenderPipeline {
@@ -59,7 +68,7 @@ impl PiplelineBuilder {
             vertex: wgpu::VertexState {
                 module: &shader_module,
                 entry_point: &self.vertex_entry,
-                buffers: &[],
+                buffers: &self.vertex_buffer_layouts,
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
