@@ -3,38 +3,52 @@ use std::fs;
 
 use wgpu::ShaderModel;
 
-pub struct PiplelineBuilder {
+pub struct Builder<'a> {
     shader_filename: String,
     vertex_entry: String,
     fragment_entry: String,
     pixel_format: wgpu::TextureFormat,
-    vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
+    vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'a>>,
+    bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,
+    device: &'a wgpu::Device,
 }
 
-impl PiplelineBuilder {
+impl<'a> Builder<'a> {
     pub fn new(
         shader_filename: &str,
         vertex_entry: &str,
         fragment_entry: &str,
         pixel_format: wgpu::TextureFormat,
+        device: &'a wgpu::Device,
     ) -> Self {
-        PiplelineBuilder {
+        Builder {
             shader_filename: shader_filename.to_owned(),
             vertex_entry: vertex_entry.to_owned(),
             fragment_entry: fragment_entry.to_owned(),
             pixel_format,
             vertex_buffer_layouts: Vec::new(),
+            bind_group_layouts: Vec::new(),
+            device,
         }
+    }
+
+    fn reset(&mut self) {
+        self.vertex_buffer_layouts.clear();
+        self.bind_group_layouts.clear();
     }
 
     pub fn add_vertex_buffer_layout(
         &mut self,
-        layout: wgpu::VertexBufferLayout<'static>,
+        layout: wgpu::VertexBufferLayout<'a>,
     ) {
         self.vertex_buffer_layouts.push(layout);
     }
 
-    pub fn build(&mut self, device: &wgpu::Device) -> wgpu::RenderPipeline {
+    pub fn add_bind_group_layout(&mut self, layout: &'a wgpu::BindGroupLayout) {
+        self.bind_group_layouts.push(layout);
+    }
+
+    pub fn build(&mut self, label: &str) -> wgpu::RenderPipeline {
         let mut filepath = current_dir().unwrap();
         filepath.push("src/shaders/");
         filepath.push(self.shader_filename.as_str());
@@ -44,17 +58,19 @@ impl PiplelineBuilder {
             fs::read_to_string(filepath).expect("Cant read shader file");
 
         let shader_module =
-            device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Shader module"),
-                source: wgpu::ShaderSource::Wgsl(source_code.into()),
-            });
+            self.device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Shader module"),
+                    source: wgpu::ShaderSource::Wgsl(source_code.into()),
+                });
 
-        let pipleline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipleline layout"),
-                bind_group_layouts: &[],
+        let pipleline_layout = self.device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                label: Some(label),
+                bind_group_layouts: &self.bind_group_layouts,
                 push_constant_ranges: &[],
-            });
+            },
+        );
 
         let render_targets = [Some(wgpu::ColorTargetState {
             format: self.pixel_format,
@@ -63,7 +79,7 @@ impl PiplelineBuilder {
         })];
 
         let render_pipleline_descriptor = wgpu::RenderPipelineDescriptor {
-            label: Some("Render pipeline"),
+            label: Some(label),
             layout: Some(&pipleline_layout),
             vertex: wgpu::VertexState {
                 module: &shader_module,
@@ -93,6 +109,12 @@ impl PiplelineBuilder {
             multiview: None,
         };
 
-        device.create_render_pipeline(&render_pipleline_descriptor)
+        let render_pipline = self
+            .device
+            .create_render_pipeline(&render_pipleline_descriptor);
+
+        self.reset();
+
+        render_pipline
     }
 }

@@ -5,8 +5,9 @@ use winit::{
 };
 
 mod renderer_backend;
-use renderer_backend::mesh_builder;
-use renderer_backend::pipeline_builder::PiplelineBuilder;
+use renderer_backend::pipeline;
+use renderer_backend::texture::Texture;
+use renderer_backend::{bind_group_layout, mesh_builder};
 
 fn main() {
     // WGPU logs via this crate. We must call init to enable it
@@ -70,6 +71,7 @@ struct State<'a> {
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     triangle_mesh: wgpu::Buffer,
+    triangle_texture: Texture,
 }
 
 impl<'a> State<'a> {
@@ -142,16 +144,34 @@ impl<'a> State<'a> {
 
         let triangle_mesh = mesh_builder::make_triangle(&device);
 
-        let mut render_pipeline_builder = PiplelineBuilder::new(
-            "shader.wgsl",
-            "vs_main",
-            "fs_main",
-            config.format,
-        );
-        render_pipeline_builder
-            .add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+        let material_bind_group_layout: wgpu::BindGroupLayout;
+        {
+            let mut builder = bind_group_layout::Builder::new(&device);
+            builder.add_material();
+            material_bind_group_layout = builder.build("Mat Bind Group Layout");
+        }
 
-        let render_pipeline = render_pipeline_builder.build(&device);
+        let render_pipeline: wgpu::RenderPipeline;
+        {
+            let mut builder = pipeline::Builder::new(
+                "shader.wgsl",
+                "vs_main",
+                "fs_main",
+                config.format,
+                &device,
+            );
+            builder
+                .add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+            builder.add_bind_group_layout(&material_bind_group_layout);
+            render_pipeline = builder.build("Render pipeline");
+        }
+
+        let triangle_texture = Texture::new(
+            "man.jpg",
+            &device,
+            &queue,
+            &material_bind_group_layout,
+        );
 
         Self {
             window,
@@ -162,6 +182,7 @@ impl<'a> State<'a> {
             size,
             render_pipeline,
             triangle_mesh,
+            triangle_texture,
         }
     }
 
@@ -222,6 +243,11 @@ impl<'a> State<'a> {
             let mut renderpass =
                 command_encoder.begin_render_pass(&render_pass_descriptor);
             renderpass.set_pipeline(&self.render_pipeline);
+            renderpass.set_bind_group(
+                0,
+                &self.triangle_texture.bind_group,
+                &[],
+            );
             renderpass.set_vertex_buffer(0, self.triangle_mesh.slice(..));
             renderpass.draw(0..3, 0..1);
         }
